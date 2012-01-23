@@ -12,13 +12,14 @@ import sys
 import time
 from optparse import OptionParser
 
-from twisted.internet import reactor, defer
+from twisted.internet import reactor
 
 rootdir = os.path.realpath(os.path.join(os.path.dirname(sys.argv[0]), '..'))
 sys.path.append(rootdir)
 os.chdir(rootdir)
 
-from txzmq import ZmqEndpoint, ZmqFactory, ZmqPubConnection, ZmqSubConnection
+import zmq
+from txzmq import ZmqFactory, ZmqPubConnection, ZmqSubConnection
 
 
 parser = OptionParser("")
@@ -30,26 +31,30 @@ parser.set_defaults(method="connect", endpoint="epgm://eth1;239.0.5.3:10011")
 (options, args) = parser.parse_args()
 
 zf = ZmqFactory()
-e = ZmqEndpoint(options.method, options.endpoint)
+
+def bind_or_connect(s):
+    if options.method == 'bind':
+        s.bind(options.endpoint)
+    elif options.method == 'connect':
+        s.connect(options.endpoint)
 
 if options.mode == "publisher":
-    s = ZmqPubConnection(zf, e)
+    pub = ZmqPubConnection(zf)
+    bind_or_connect(pub)
 
     def publish():
         data = str(time.time())
         print "publishing %r" % data
-        s.publish(data)
+        pub.send(data)
 
         reactor.callLater(1, publish)
 
     publish()
 else:
-    s = ZmqSubConnection(zf, e)
-    s.subscribe("")
-
-    def doPrint(*args):
-        print "message received: %r" % (args, )
-
-    s.gotMessage = doPrint
+    def doPrint(msgs):
+        print "message received: %r" % (msgs, )
+    sub = ZmqSubConnection(zf, callback=doPrint)
+    sub.setsockopt(zmq.SUBSCRIBE, '')
+    bind_or_connect(sub)
 
 reactor.run()
