@@ -1,47 +1,21 @@
 """
 ZeroMQ connection.
 """
-from collections import deque, namedtuple
+import logging
+from collections import deque
 
 from zmq.core import constants, error
-from zmq.core.socket import Socket
-
 from zope.interface import implements
-
 from twisted.internet.interfaces import IFileDescriptor, IReadDescriptor
-from twisted.python import log
-
-
-class ZmqEndpointType(object):
-    """
-    Endpoint could be "bound" or "connected".
-    """
-    bind = "bind"
-    connect = "connect"
-
-
-ZmqEndpoint = namedtuple('ZmqEndpoint', ['type', 'address'])
-
 
 class ZmqConnection(object):
     """
     Connection through ZeroMQ, wraps up ZeroMQ socket.
 
-    @cvar socketType: socket type, from ZeroMQ
-    @cvar allowLoopbackMulticast: is loopback multicast allowed?
-    @type allowLoopbackMulticast: C{boolean}
-    @cvar multicastRate: maximum allowed multicast rate, kbps
-    @type multicastRate: C{int}
-    @cvar highWaterMark: hard limit on the maximum number of outstanding
-        messages 0MQ shall queue in memory for any single peer
-    @type highWaterMark: C{int}
-
     @ivar factory: ZeroMQ Twisted factory reference
     @type factory: L{ZmqFactory}
     @ivar socket: ZeroMQ Socket
     @type socket: L{Socket}
-    @ivar endpoints: ZeroMQ addresses for connect/bind
-    @type endpoints: C{list} of L{ZmqEndpoint}
     @ivar fd: file descriptor of zmq mailbox
     @type fd: C{int}
     @ivar queue: output message queue
@@ -49,58 +23,89 @@ class ZmqConnection(object):
     """
     implements(IReadDescriptor, IFileDescriptor)
 
-    socketType = None
-    allowLoopbackMulticast = False
-    multicastRate = 100
-    highWaterMark = 0
-    identity = None
-
-    def __init__(self, factory, *endpoints):
+    def __init__(self, factory, socket, callback=None, logger=None):
         """
         Constructor.
 
         @param factory: ZeroMQ Twisted factory
         @type factory: L{ZmqFactory}
-        @param endpoints: ZeroMQ addresses for connect/bind
-        @type endpoints: C{list} of L{ZmqEndpoint}
+        @param socket: ZeroMQ socket
+        @type socket: L{Socket}
+        @param callback: Function to be called when message received
+        @type callback: L{Function}
         """
+        self.logger = logger or logging.getLogger(__name__)
         self.factory = factory
-        self.endpoints = endpoints
-        self.socket = Socket(factory.context, self.socketType)
+        self.socket = socket
+        self.callback = callback
+        
         self.queue = deque()
         self.recv_parts = []
-
+        
         self.fd = self.socket.getsockopt(constants.FD)
-        self.socket.setsockopt(constants.LINGER, factory.lingerPeriod)
-        self.socket.setsockopt(
-            constants.MCAST_LOOP, int(self.allowLoopbackMulticast))
-        self.socket.setsockopt(constants.RATE, self.multicastRate)
-        self.socket.setsockopt(constants.HWM, self.highWaterMark)
-        if self.identity is not None:
-            self.socket.setsockopt(constants.IDENTITY, self.identity)
-
-        self._connectOrBind()
-
         self.factory.connections.add(self)
-
         self.factory.reactor.addReader(self)
-
+        
+    def setsockopt(self, option, optval):
+        """Shortcut for self.socket.setsockopt
+        
+        """
+        return self.socket.setsockopt(option, optval)
+        
+    def setsockopt_unicode(self, option, optval, encoding='utf-8'):
+        """Shortcut for self.socket.setsockopt_unicode
+        
+        """
+        return self.socket.setsockopt_unicode(option, optval, encoding)
+    
+    def getsockopt(self, option):
+        """Shortcut for self.socket.getsockopt
+        
+        """
+        return self.socket.getsockopt(option)
+    
+    def getsockopt_unicode(self, option, encoding='utf-8'):
+        """Shortcut for self.socket.getsockopt
+        
+        """
+        return self.socket.getsockopt_unicode(option, encoding)
+    
+    def connect(self, addr):
+        """Shortcut for self.socket.connect
+        
+        """
+        return self.socket.connect(addr)
+    
+    def bind(self, addr):
+        """Shortcut for self.socket.bind
+        
+        """
+        return self.socket.bind(addr)
+    
+    def bind_to_random_port(
+        self, 
+        addr, 
+        min_port=49152, 
+        max_port=65536, 
+        max_tries=100
+    ):
+        """Shortcut for self.socket.bind
+        
+        """
+        return self.socket.bind_to_random_port(addr, min_port, max_port, 
+                                               max_tries)
+    
     def shutdown(self):
         """
         Shutdown connection and socket.
         """
         self.factory.reactor.removeReader(self)
-
         self.factory.connections.discard(self)
 
         self.socket.close()
         self.socket = None
-
+        
         self.factory = None
-
-    def __repr__(self):
-        return "%s(%r, %r)" % (
-            self.__class__.__name__, self.factory, self.endpoints)
 
     def fileno(self):
         """
@@ -127,7 +132,7 @@ class ZmqConnection(object):
                        L{error.ConnectionDone} are of special note, but the
                        failure may be of other classes as well.
         """
-        log.err(reason, "Connection to ZeroMQ lost in %r" % (self))
+        self.logger.error('Connection to ZeroMQ lost for reason %r', reason)
         if self.factory:
             self.factory.reactor.removeReader(self)
 
@@ -163,8 +168,17 @@ class ZmqConnection(object):
                         break
 
                     raise e
-
-                log.callWithLogger(self, self.messageReceived, message)
+                if self.callback:
+                    try:
+                        self.callback(message)
+                    except (SystemExit, KeyboardInterrupt):
+                        raise
+                    except Exception, e:
+                        self.logger.error('Failed to call msg_func')
+                        self.logger.exception(e)
+                else:
+                    self.logger.warn('msg_func is not set, ignore message %r', 
+                                     message)
         if (events & constants.POLLOUT) == constants.POLLOUT:
             self._startWriting()
 
@@ -209,23 +223,10 @@ class ZmqConnection(object):
         self.socket.getsockopt(constants.EVENTS)
 
         self._startWriting()
-
-    def messageReceived(self, message):
-        """
-        Called on incoming message from ZeroMQ.
-
-        @param message: message data
-        """
-        raise NotImplementedError(self)
-
-    def _connectOrBind(self):
-        """
-        Connect and/or bind socket to endpoints.
-        """
-        for endpoint in self.endpoints:
-            if endpoint.type == ZmqEndpointType.connect:
-                self.socket.connect(endpoint.address)
-            elif endpoint.type == ZmqEndpointType.bind:
-                self.socket.bind(endpoint.address)
-            else:
-                assert False, "Unknown endpoint type %r" % endpoint
+        # Notice: sometimes, send operation is completed and data is available
+        # for reading before we goes into select, namely, reactor
+        # in this case, select can't catch a read event from fd
+        # to solve the problem, we should check is there data to read here
+        # it will clean the POLLIN event of the socket, it makes
+        # the fd will be notified if there is event later
+        self.factory.reactor.callFromThread(self.doRead)

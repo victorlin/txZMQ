@@ -3,9 +3,6 @@ ZeroMQ Twisted factory which is controlling ZeroMQ context.
 """
 from zmq.core.context import Context
 
-from twisted.internet import reactor
-
-
 class ZmqFactory(object):
     """
     I control individual ZeroMQ connections.
@@ -13,33 +10,27 @@ class ZmqFactory(object):
     Factory creates and destroys ZeroMQ context.
 
     @cvar reactor: reference to Twisted reactor used by all the connections
-    @cvar ioThreads: number of IO threads ZeroMQ will be using for this context
-    @type ioThreads: C{int}
-    @cvar: lingerPeriod: number of milliseconds to block when closing socket
-        (terminating context), when there are some messages pending to be sent
-    @type lingerPeriod: C{int}
-
     @ivar connections: set of instanciated L{ZmqConnection}s
     @type connections: C{set}
     @ivar context: ZeroMQ context
     @type context: L{Context}
     """
 
-    reactor = reactor
-    ioThreads = 1
-    lingerPeriod = 100
-
-    def __init__(self):
+    def __init__(self, context=None, reactor=None):
         """
         Constructor.
 
         Create ZeroMQ context.
         """
+        self.reactor = reactor
+        if self.reactor is None:
+            from twisted.internet import reactor
+            self.reactor = reactor
+        self.context = context
+        if self.context is None:
+            self.context = Context.instance()
+        #: connections made with this factory
         self.connections = set()
-        self.context = Context(self.ioThreads)
-
-    def __repr__(self):
-        return "ZmqFactory()"
 
     def shutdown(self):
         """
@@ -61,4 +52,4 @@ class ZmqFactory(object):
         Register factory to be automatically shut down
         on reactor shutdown.
         """
-        reactor.addSystemEventTrigger('during', 'shutdown', self.shutdown)
+        self.reactor.addSystemEventTrigger('during', 'shutdown', self.shutdown)

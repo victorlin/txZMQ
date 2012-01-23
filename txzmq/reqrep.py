@@ -1,30 +1,31 @@
 """
 ZeroMQ PUB-SUB wrappers.
 """
-from zmq.core import constants
+import uuid
 
+import zmq
 from twisted.internet import defer
 
 from txzmq.connection import ZmqConnection
-
 
 class ZmqXREQConnection(ZmqConnection):
     """
     A XREQ connection.
     """
-    socketType = constants.XREQ
 
-    def __init__(self, factory, *endpoints):
-        ZmqConnection.__init__(self, factory, *endpoints)
+    def __init__(self, factory, socket=None):
+        if socket is None:
+            socket = factory.context.socket(zmq.XREQ)
         self._requests = {}
+        ZmqConnection.__init__(self, factory, socket, self.messageReceived)
 
     def _getNextId(self):
         """
         Returns an unique id.
         """
-        raise NotImplementedError(self)
+        return uuid.uuid4().hex
 
-    def sendMsg(self, *message_parts):
+    def request(self, message_parts):
         """
         Send L{message} with specified L{tag}.
 
@@ -47,18 +48,19 @@ class ZmqXREQConnection(ZmqConnection):
         d = self._requests.pop(msg_id)
         d.callback(msg)
 
-
 class ZmqXREPConnection(ZmqConnection):
     """
     A XREP connection.
     """
-    socketType = constants.XREP
 
-    def __init__(self, factory, *endpoints):
-        ZmqConnection.__init__(self, factory, *endpoints)
+    def __init__(self, factory, callback, socket=None):
+        if socket is None:
+            socket = factory.context.socket(zmq.XREQ)
+        self.req_callback = callback
         self._routing_info = {}  # keep track of routing info
+        ZmqConnection.__init__(self, factory, socket, self.messageReceived)
 
-    def reply(self, message_id, *message_parts):
+    def reply(self, message_id, message_parts):
         """
         Send L{message} with specified L{tag}.
 
@@ -82,13 +84,4 @@ class ZmqXREPConnection(ZmqConnection):
             message[:i - 1], message[i - 1], message[i + 1:])
         msg_parts = payload[0:]
         self._routing_info[msg_id] = routing_info
-        self.gotMessage(msg_id, *msg_parts)
-
-    def gotMessage(self, message_id, *message_parts):
-        """
-        Called on incoming message.
-
-        @param message_parts: message data
-        @param tag: message tag
-        """
-        raise NotImplementedError(self)
+        self.req_callback(msg_id, msg_parts)

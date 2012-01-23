@@ -1,109 +1,71 @@
 """
 Tests for L{txzmq.connection}.
 """
-from zmq.core import constants
-
-from zope.interface import verify as ziv
-
-from twisted.internet.interfaces import IFileDescriptor, IReadDescriptor
 from twisted.trial import unittest
-
-from txzmq.connection import ZmqConnection, ZmqEndpoint, ZmqEndpointType
-from txzmq.factory import ZmqFactory
-from txzmq.test import _wait
-
-
-class ZmqTestSender(ZmqConnection):
-    socketType = constants.PUSH
-
-
-class ZmqTestReceiver(ZmqConnection):
-    socketType = constants.PULL
-
-    def messageReceived(self, message):
-        if not hasattr(self, 'messages'):
-            self.messages = []
-
-        self.messages.append(message)
-
 
 class ZmqConnectionTestCase(unittest.TestCase):
     """
     Test case for L{zmq.twisted.connection.Connection}.
     """
+    
+    def make_one(self, *args, **kwargs):
+        from txzmq.connection import ZmqConnection
+        return ZmqConnection(self.factory, *args, **kwargs)
 
     def setUp(self):
+        from txzmq.factory import ZmqFactory
         self.factory = ZmqFactory()
 
     def tearDown(self):
         self.factory.shutdown()
 
     def test_interfaces(self):
+        from zope.interface import verify as ziv
+        from twisted.internet.interfaces import IFileDescriptor, IReadDescriptor
+        from txzmq.connection import ZmqConnection
         ziv.verifyClass(IReadDescriptor, ZmqConnection)
         ziv.verifyClass(IFileDescriptor, ZmqConnection)
 
-    def test_init(self):
-        ZmqTestReceiver(
-            self.factory, ZmqEndpoint(ZmqEndpointType.bind, "inproc://#1"))
-        ZmqTestSender(
-            self.factory, ZmqEndpoint(ZmqEndpointType.connect, "inproc://#1"))
-
-    def test_repr(self):
-        expected = ("ZmqTestReceiver(ZmqFactory(), "
-                    "(ZmqEndpoint(type='bind', address='inproc://#1'),))")
-        result = ZmqTestReceiver(
-            self.factory, ZmqEndpoint(ZmqEndpointType.bind, "inproc://#1"))
-        self.failUnlessEqual(expected, repr(result))
-
     def test_send_recv(self):
-        r = ZmqTestReceiver(
-            self.factory, ZmqEndpoint(ZmqEndpointType.bind, "inproc://#1"))
-        s = ZmqTestSender(
-            self.factory, ZmqEndpoint(ZmqEndpointType.connect, "inproc://#1"))
-
-        s.send('abcd')
+        import zmq
+        from txzmq.test import _wait
+        
+        result = []
+        def msg_func(msg):
+            result.append(msg)
+        
+        r = self.make_one(self.factory.context.socket(zmq.PULL), msg_func)
+        r.bind("inproc://#1")
+        
+        s = self.make_one(self.factory.context.socket(zmq.PUSH))
+        s.connect("inproc://#1")
+        s.send(['abcd'])
 
         def check(ignore):
-            result = getattr(r, 'messages', [])
             expected = [['abcd']]
-            self.failUnlessEqual(
-                result, expected, "Message should have been received")
+            self.assertEqual(result, expected)
 
-        return _wait(0.01).addCallback(check)
+        return _wait(0.1).addCallback(check)
 
     def test_send_recv_tcp(self):
-        r = ZmqTestReceiver(
-            self.factory, ZmqEndpoint(ZmqEndpointType.bind,
-            "tcp://127.0.0.1:5555"))
-        s = ZmqTestSender(
-            self.factory, ZmqEndpoint(ZmqEndpointType.connect,
-            "tcp://127.0.0.1:5555"))
-
-        for i in xrange(100):
-            s.send(str(i))
-
-        def check(ignore):
-            result = getattr(r, 'messages', [])
-            expected = map(lambda i: [str(i)], xrange(100))
-            self.failUnlessEqual(
-                result, expected, "Messages should have been received")
-
-        return _wait(0.01).addCallback(check)
-
-    def test_send_recv_tcp_large(self):
-        r = ZmqTestReceiver(
-            self.factory, ZmqEndpoint(ZmqEndpointType.bind,
-            "tcp://127.0.0.1:5555"))
-        s = ZmqTestSender(
-            self.factory, ZmqEndpoint(ZmqEndpointType.connect,
-            "tcp://127.0.0.1:5555"))
-
-        s.send(["0" * 10000, "1" * 10000])
+        import zmq
+        from txzmq.test import _wait
+        
+        result = []
+        def msg_func(msg):
+            result.append(msg)
+        
+        r = self.make_one(self.factory.context.socket(zmq.PULL), msg_func)
+        r.bind("tcp://127.0.0.1:5555")
+        
+        s = self.make_one(self.factory.context.socket(zmq.PUSH))
+        s.connect("tcp://127.0.0.1:5555")
+        
+        msgs = [[str(i)] for i in xrange(100)]
+        for m in msgs:
+            s.send(m)
 
         def check(ignore):
-            result = getattr(r, 'messages', [])
-            expected = [["0" * 10000, "1" * 10000]]
-            self.failUnlessEqual(
-                result, expected, "Messages should have been received")
+            self.assertEqual(result, msgs)
 
-        return _wait(0.01).addCallback(check)
+        return _wait(0.1).addCallback(check)
