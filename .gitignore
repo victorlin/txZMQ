@@ -4,3 +4,8 @@ dist/
 _trial_temp/
 *.pyc
 *~
+vic_txZMQ.egg-info/
+nose_cov-1.4-py2.7.egg/
+coverage-3.5.1-py2.7-win32.egg/
+cov_core-1.3-py2.7.egg/
+build/
