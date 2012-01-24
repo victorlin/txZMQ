@@ -156,6 +156,9 @@ class ZmqConnection(object):
 
         Part of L{IReadDescriptor}.
         """
+        if self.socket is None:
+            self.logger.warn('Already closed, ignore doRead call')
+            return
         events = self.socket.getsockopt(constants.EVENTS)
         if (events & constants.POLLIN) == constants.POLLIN:
             while True:

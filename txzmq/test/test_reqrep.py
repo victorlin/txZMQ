@@ -72,6 +72,53 @@ class ZmqConnectionTestCase(unittest.TestCase):
             
         return d
     
+    def test_request_with_timeout(self):
+        rep = self.make_rep(callback=lambda msg_id, msg_parts: None)
+        rep.bind('inproc://no-reply')
+        # connect to a non-exist 
+        req = self.make_req()
+        req.connect('inproc://no-reply')
+
+        from twisted.internet import task
+        clock = task.Clock()
+                
+        d = req.request(['a', 'b', 'c'], timeout=5, call_later=clock.callLater)
+        def check_timeout(failure):
+            from twisted.internet.defer import TimeoutError
+            self.assertEqual(failure.type, TimeoutError)
+        d.addBoth(check_timeout)
+        
+        clock.advance(11)
+        return d
+    
+    def test_request_with_timeout_not_trigged(self):
+        from twisted.internet import reactor
+        from twisted.internet import defer
+        
+        def reply_func(msg_id, msg_parts):
+            rep.reply(msg_id, ['reply'] + msg_parts)
+        
+        rep = self.make_rep(callback=reply_func)
+        rep.bind('inproc://#1')
+            
+        req = self.make_req()
+        req.connect('inproc://#1')
+        
+        d = req.request(['hello', 'baby'], timeout=10)
+        
+        def timeout():
+            if not d.called:
+                defer.timeout(d)
+        call_id = reactor.callLater(0.1, timeout)
+        
+        def check(msg):
+            expected = ['reply', 'hello', 'baby']
+            self.assertEqual(msg, expected)
+            if not call_id.called:
+                call_id.cancel()
+        d.addCallback(check)
+        return d
+            
     def test_read_signal_up_when_send_bug(self):
         """Reference to https://github.com/smira/txZMQ/pull/3
         
