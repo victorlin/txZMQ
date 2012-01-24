@@ -12,7 +12,7 @@ class ZmqPubConnection(ZmqConnection):
     
     def __init__(self, factory, socket=None):
         if socket is None:
-            socket = factory.context.socket(zmq.PUB)
+            socket = factory.socket(zmq.PUB)
         ZmqConnection.__init__(self, factory, socket)
 
 class ZmqSubConnection(ZmqConnection):
@@ -22,5 +22,5 @@ class ZmqSubConnection(ZmqConnection):
     
     def __init__(self, factory, socket=None, callback=None):
         if socket is None:
-            socket = factory.context.socket(zmq.SUB)
+            socket = factory.socket(zmq.SUB)
         ZmqConnection.__init__(self, factory, socket, callback)

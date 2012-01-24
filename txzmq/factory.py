@@ -1,7 +1,7 @@
 """
 ZeroMQ Twisted factory which is controlling ZeroMQ context.
 """
-from zmq.core.context import Context
+import zmq
 
 class ZmqFactory(object):
     """
@@ -16,7 +16,7 @@ class ZmqFactory(object):
     @type context: L{Context}
     """
 
-    def __init__(self, context=None, reactor=None):
+    def __init__(self, context=None, reactor=None, linger_period=100):
         """
         Constructor.
 
@@ -28,9 +28,20 @@ class ZmqFactory(object):
             self.reactor = reactor
         self.context = context
         if self.context is None:
-            self.context = Context.instance()
+            self.context = zmq.Context.instance()
+        self.linger_period = linger_period
         #: connections made with this factory
         self.connections = set()
+        
+    def socket(self, type):
+        """Create a ZeroMQ socket, and set ZMQ_LINGER on it if 
+        self.linger_period is not None 
+        
+        """
+        s = self.context.socket(type)
+        if self.linger_period is not None:
+            s.setsockopt(zmq.LINGER, self.linger_period)
+        return s
 
     def shutdown(self):
         """
