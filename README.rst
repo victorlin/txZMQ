@@ -37,9 +37,12 @@ to connect or bind a address after a ZmqConnection was created, original
 design has no obvious way to do it. You need to pass endpoints when create a
 new ZmqConnection.
 
+PUSH/PULL and PAIR connections are not present in original version. I add
+those connection types in this library.
+
 There is also `a serious bug`_ in original version. When read signal
 of FD is triggered before reactor perform another select, then txZMQ stop
-reading from that socket anymore. This version also fixes the bug. 
+reading from that socket anymore. This version fixes the bug. 
 
 .. _`a serious bug`: https://github.com/smira/txZMQ/pull/3
 
