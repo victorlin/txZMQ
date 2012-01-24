@@ -6,7 +6,7 @@ from setuptools import setup
 
 setup(
     name='vic-txZMQ',
-    version='0.5.0',
+    version='0.5.1',
     packages=['txzmq','txzmq.test'],
     license='GPLv2',
     author='Victor Lin, Andrey Smirnov',
