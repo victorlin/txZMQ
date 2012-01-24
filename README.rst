@@ -79,8 +79,10 @@ PUB/SUB sockets.
 Request/reply pattern is achieved via XREQ/XREP sockets and classes ``ZmqXREQConnection``, 
 ``ZmqXREPConection``.
 
-Other socket types could be easily derived from ``ZmqConnection``.
+Push/pull pattern is achieved via classes ``ZmqPushConnection``, 
+``ZmqPullConection``.
 
+Finally, Pair pattern is achieved via classes ``ZmqPairConnection``.
 
 Example
 -------
