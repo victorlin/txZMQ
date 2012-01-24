@@ -6,11 +6,42 @@ Twisted bindings for 0MQ
 Introduction
 ------------
 
+.. note::
+
+    This is not the `original version of txZMQ`_, this is a refactoried version
+    of txZMQ by Victor Lin.
+    
+    .. _`original version of txZMQ`: http://pypi.python.org/pypi/txZMQ
+
 txZMQ allows to integrate easily `0MQ <http://zeromq.org>`_ sockets into
 Twisted event loop (reactor).
 
 txZMQ supports both CPython and PyPy.
 
+Improvement
+-----------
+
+Original API design of txZMQ was wrongly designed, and they are not reusable or
+hard to use,  for example, to set HWM of a ZeroMQ socket, you need to change 
+the class level variable.::
+
+    from txzmq import ZmqConnection
+    ZmqConnection.highWaterMark = 100
+    conn = ZmqConnection(factory)
+    
+As you can see the highWaterMark variable affects all connection made afterward.
+This is obviously not a good design. 
+
+Also, the encapsulation of endpoints is not necessary. Sometimes you may need
+to connect or bind a address after a ZmqConnection was created, original 
+design has no obvious way to do it. You need to pass endpoints when create a
+new ZmqConnection.
+
+There is also `a serious bug`_ in original version. When read signal
+of FD is triggered before reactor perform another select, then txZMQ stop
+reading from that socket anymore. This version also fixes the bug. 
+
+.. _`a serious bug`: https://github.com/smira/txZMQ/pull/3
 
 Requirements
 ------------
@@ -53,48 +84,53 @@ Example
 
 Here is an example of using txZMQ::
 
+    import os
     import sys
-
+    import time
     from optparse import OptionParser
-
-    from twisted.internet import reactor, defer
-
+    
+    from twisted.internet import reactor
+    
+    import zmq
+    from txzmq import ZmqFactory, ZmqPubConnection, ZmqSubConnection
+    
     parser = OptionParser("")
     parser.add_option("-m", "--method", dest="method", help="0MQ socket connection: bind|connect")
     parser.add_option("-e", "--endpoint", dest="endpoint", help="0MQ Endpoint")
     parser.add_option("-M", "--mode", dest="mode", help="Mode: publisher|subscriber")
-
     parser.set_defaults(method="connect", endpoint="epgm://eth1;239.0.5.3:10011")
-
+    
     (options, args) = parser.parse_args()
-
-    from txzmq import ZmqFactory, ZmqEndpoint, ZmqPubConnection, ZmqSubConnection
-    import time
-
+    
     zf = ZmqFactory()
-    e = ZmqEndpoint(options.method, options.endpoint)
-
+    
+    def bind_or_connect(s):
+        if options.method == 'bind':
+            s.bind(options.endpoint)
+        elif options.method == 'connect':
+            s.connect(options.endpoint)
+    
     if options.mode == "publisher":
-        s = ZmqPubConnection(zf, e)
-
+        pub = ZmqPubConnection(zf)
+        bind_or_connect(pub)
+    
         def publish():
             data = str(time.time())
             print "publishing %r" % data
-            s.publish(data)
-
+            pub.send(data)
+    
             reactor.callLater(1, publish)
-
+    
         publish()
     else:
-        s = ZmqSubConnection(zf, e)
-        s.subscribe("")
-
-        def doPrint(*args):
-            print "message received: %r" % (args, )
-
-        s.gotMessage = doPrint
-
+        def doPrint(msgs):
+            print "message received: %r" % (msgs, )
+        sub = ZmqSubConnection(zf, callback=doPrint)
+        sub.setsockopt(zmq.SUBSCRIBE, '')
+        bind_or_connect(sub)
+    
     reactor.run()
+
 
 The same example is available in the source code. You can run it from the
 checkout directory with the following commands (in two different terminals)::
@@ -106,7 +142,7 @@ checkout directory with the following commands (in two different terminals)::
 Hacking
 -------
 
-Source code for txZMQ is available at `github <https://github.com/smira/txZMQ>`_;
+Source code for txZMQ is available at `github <https://github.com/victorlin/txZMQ>`_;
 forks and pull requests are welcome.
 
 To start hacking, fork at github and clone to your working directory. To use
