@@ -199,3 +199,19 @@ class ZmqConnectionTestCase(unittest.TestCase):
             return result
         d.addCallback(callback)
         return d
+    
+    def test_requests_clean_up(self):
+        def reply_func(msg_id, msg_parts):
+            rep.reply(msg_id, ['reply'] + msg_parts)
+        
+        rep = self.make_rep(callback=reply_func)
+        rep.bind('inproc://#1')
+        
+        req = self.make_req()
+        req.connect('inproc://#1')
+        d = req.request(['hello', 'baby'], timeout=10)
+        def callback(result):
+            self.assertNot(req._requests)
+            return result
+        d.addCallback(callback)
+        return d
