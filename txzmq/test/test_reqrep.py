@@ -167,3 +167,19 @@ class ZmqConnectionTestCase(unittest.TestCase):
         d.addCallback(check)
             
         return d
+    
+    def test_routing_info_clean_up(self):
+        def reply_func(msg_id, msg_parts):
+            rep.reply(msg_id, ['reply'] + msg_parts)
+        
+        rep = self.make_rep(callback=reply_func)
+        rep.bind('inproc://#1')
+        
+        req = self.make_req()
+        req.connect('inproc://#1')
+        d = req.request(['hello', 'baby'], timeout=10)
+        def callback(result):
+            self.assertNot(rep._routing_info)
+            return result
+        d.addCallback(callback)
+        return d
