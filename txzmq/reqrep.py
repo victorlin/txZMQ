@@ -8,9 +8,9 @@ from twisted.internet import defer
 
 from txzmq.connection import ZmqConnection
 
-class ZmqXREQConnection(ZmqConnection):
+class ZmqReqConnection(ZmqConnection):
     """
-    A XREQ connection.
+    A REQ connection.
     """
 
     def __init__(self, factory, socket=None):
@@ -61,9 +61,9 @@ class ZmqXREQConnection(ZmqConnection):
         if not d.called:
             d.callback(msg)
 
-class ZmqXREPConnection(ZmqConnection):
+class ZmqRepConnection(ZmqConnection):
     """
-    A XREP connection.
+    A REP connection.
     """
 
     def __init__(self, factory, callback, socket=None):
@@ -98,3 +98,19 @@ class ZmqXREPConnection(ZmqConnection):
         msg_parts = payload[0:]
         self._routing_info[msg_id] = routing_info
         self.req_callback(msg_id, msg_parts)
+        
+def _deprecated(deprecated, instead):
+    import warnings
+    msg = "Class %s was deprecated, use %s instead" % (
+        deprecated.__name__, instead.__name__)
+    warnings.warn(msg, DeprecationWarning)
+    
+class ZmqXREQConnection(ZmqReqConnection):
+    def __init__(self, *args, **kwargs):
+        _deprecated(self.__class__, ZmqRepConnection)
+        ZmqReqConnection.__init__(self, *args, **kwargs)
+    
+class ZmqXREPConnection(ZmqRepConnection):
+    def __init__(self, *args, **kwargs):
+        _deprecated(self.__class__, ZmqRepConnection)
+        ZmqRepConnection.__init__(self, *args, **kwargs)

@@ -9,12 +9,12 @@ class ZmqConnectionTestCase(unittest.TestCase):
     """
     
     def make_req(self, *args, **kwargs):
-        from txzmq.reqrep import ZmqXREQConnection
-        return ZmqXREQConnection(self.factory, *args, **kwargs)
+        from txzmq.reqrep import ZmqReqConnection
+        return ZmqReqConnection(self.factory, *args, **kwargs)
 
     def make_rep(self, *args, **kwargs):
-        from txzmq.reqrep import ZmqXREPConnection
-        return ZmqXREPConnection(self.factory, *args, **kwargs)
+        from txzmq.reqrep import ZmqRepConnection
+        return ZmqRepConnection(self.factory, *args, **kwargs)
 
     def setUp(self):
         from txzmq.factory import ZmqFactory
@@ -215,3 +215,25 @@ class ZmqConnectionTestCase(unittest.TestCase):
             return result
         d.addCallback(callback)
         return d
+    
+    def test_deprecated_class_name(self):
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            
+            from txzmq import ZmqXREQConnection
+            ZmqXREQConnection(self.factory)
+            
+            self.assertEqual(len(w), 1)
+            self.assert_(issubclass(w[-1].category, DeprecationWarning))
+            self.assertIn("deprecated", str(w[-1].message).lower())
+            
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            
+            from txzmq import ZmqXREPConnection
+            ZmqXREPConnection(self.factory, lambda: None)
+            
+            self.assertEqual(len(w), 1)
+            self.assert_(issubclass(w[-1].category, DeprecationWarning))
+            self.assertIn("deprecated", str(w[-1].message).lower())

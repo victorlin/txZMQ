@@ -18,4 +18,6 @@ __all__ = [
     'ZmqPullConnection', 
     'ZmqXREQConnection',
     'ZmqXREPConnection'
+    'ZmqReqConnection',
+    'ZmqRepConnection'
 ]
