@@ -15,7 +15,7 @@ class ZmqXREQConnection(ZmqConnection):
 
     def __init__(self, factory, socket=None):
         if socket is None:
-            socket = factory.socket(zmq.XREQ)
+            socket = factory.socket(zmq.DEALER)
         self._requests = {}
         self._timeout_calls = {}
         ZmqConnection.__init__(self, factory, socket, self.messageReceived)
@@ -68,7 +68,7 @@ class ZmqXREPConnection(ZmqConnection):
 
     def __init__(self, factory, callback, socket=None):
         if socket is None:
-            socket = factory.socket(zmq.XREQ)
+            socket = factory.socket(zmq.ROUTER)
         self.req_callback = callback
         self._routing_info = {}  # keep track of routing info
         ZmqConnection.__init__(self, factory, socket, self.messageReceived)
