@@ -54,12 +54,12 @@ class ZmqXREQConnection(ZmqConnection):
         @param message: message data
         """
         msg_id, _, msg = message[0], message[1], message[2:]
+        timeout_call = self._timeout_calls.pop(msg_id, None)
+        if timeout_call is not None and not timeout_call.called:
+            timeout_call.cancel()
         d = self._requests.pop(msg_id)
         if not d.called:
             d.callback(msg)
-        timeout_call = self._timeout_calls.get(msg_id)
-        if timeout_call is not None and not timeout_call.called:
-            timeout_call.cancel()
 
 class ZmqXREPConnection(ZmqConnection):
     """
@@ -82,7 +82,7 @@ class ZmqXREPConnection(ZmqConnection):
         @param message: message data
         @type message: C{str}
         """
-        routing_info = self._routing_info[message_id]
+        routing_info = self._routing_info.pop(message_id)
         self.send(routing_info + [message_id, ''] + list(message_parts))
 
     def messageReceived(self, message):
